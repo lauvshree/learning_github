@@ -1,19 +1,48 @@
-name: Build and Test
+name: Deploy to Pages
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Check out the code
-      uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Build
-      run: |
-        echo "Building the project..."
-    
-    - name: Test
-      run: |
-        echo "Running tests..."
+      - name: Set up Pandoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+          sudo apt-get install -y texlive-xetex
+
+      - name: Convert .md to .pdf and .html
+        run: |
+          find . -type f -name "*.md" -print0 | while IFS= read -d $'\0' file; do
+            pandoc -f markdown_mmd -t html --output="${file%.*}.html" "$file"
+            pandoc --resource-path=~:images --resource-path='./images' -f html -t pdf --output="${file%.*}.pdf" "${file%.*}.html"
+          done
+          curr_dir=$(pwd)
+          echo "<h1>${curr_dir##*/}</h1><br/>" >> index.html
+          find . -type f \( -name "*.html" -o -name "*.pdf" \) -print0 | while IFS= read -d $'\0' file; do
+            curr_dir="${curr_dir##*/}"
+            file_name="${file##*/}"
+            loc="window.location.hostname+'/${curr_dir}/${file_name}'"
+            echo "<img src='https://img.icons8.com/color/28/null/copy--v1.png' onClick=\"navigator.clipboard.writeText(${loc});\"/>" >> index.html
+            echo "<a href=\"${file}\" target=\"blank\">${file_name}</a><br/>" >> index.html
+          done
+
+      - name: Create public directory
+        run: |
+          mkdir .public
+          cp -r * .public
+          mv .public public
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: public
+          path: public
